@@ -39,7 +39,7 @@ class AccountService {
     public void transferMoneyBlocking3(Account accountA, Account accountB, 
         long amount) {
 
-            accountALock = accountA.lock;       
+            ReadWriteLock accountALock = accountA.lock;       
 
             try {
                 if(!accountALock.writeLock().tryLock(20, TimeUnit.SECONDS)) {
@@ -56,5 +56,27 @@ class AccountService {
             } finally {
                 accountALock.writeLock().unlock();
             }
+    }
+
+    // (4)
+    // Non-blocking implementatation. We use atomic integer for amount value.
+    // We get its value, check the balance and update the balance only if it's the same as before
+    // Similar to optimistic locking in RBDMS but only for a single field.
+    // To implement it for multiple fields (smth like non-blocking update of account) using the "version" field
+    // we have to implement "transaction isolation" first.
+    public void transferMoneyBlocking3(Account accountA, Account accountB, 
+        long amount) {
+
+            Integer accountABalance = accountA.atomicAmount.get();       
+
+            if(accountABalance < amount) {
+                throw new NegativeBalanceException(accountA, amount);
+            }
+
+            if(!accountA.atomicAmount.compareAndSet(accountABalance, accountABalance - amount) {
+                throw new OptimisticLockException(accountA);
+            }
+
+            accountB.atomicAmount.addAndGet(amount);
     }
 }
