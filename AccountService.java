@@ -64,7 +64,7 @@ class AccountService {
     // Similar to optimistic locking in RBDMS but only for a single field.
     // To implement it for multiple fields (smth like non-blocking update of account) using the "version" field
     // we have to implement "transaction isolation" first.
-    public void transferMoneyBlocking3(Account accountA, Account accountB, 
+    public void transferMoneyNonBlocking1(Account accountA, Account accountB, 
         long amount) {
 
             Integer accountABalance = accountA.atomicAmount.get();       
@@ -78,5 +78,34 @@ class AccountService {
             }
 
             accountB.atomicAmount.addAndGet(amount);
+    }
+
+    public void transferMoneyNonBlocking2(String accountAName, String accountBName, 
+        long amount) {
+
+            //MVCC part
+            Integer transactionVersion = VersionedAccounts.currentVersion();
+
+            Account accountA = VersionedAccounts.findByName(accountAName, transactionVersion)
+              .clone();
+           
+           if(accountA.amount < amount) {
+               throw new NegativeBalanceException();
+           }
+            
+           Account accountB = VersionedAccounts.findByName(accountBName, transactionVersion)
+             .clone();
+
+            accountA.amount -= amount;
+            accountB.amount += amount;
+            
+            Integer accountAOldVersion = accountA.version.get();
+            Integer accountBOldVersion = accountB.version.get();
+
+            accountA.version.set(transactionVersion);
+            accountB.version.set(transactionVersion);
+
+            VersionedAccounts.updateAccountVersion(accountA, accountAOldVersion);
+            VersionedAccounts.updateAccountVersion(accountB,  accountBOldVersion);
     }
 }
