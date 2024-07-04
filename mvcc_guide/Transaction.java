@@ -16,9 +16,9 @@ class Transaction {
 
         // The record is expired or and no transaction holds it that
         // is our own.
-        if (record.expiredXid != null  
-            && (InMemoryDatabase.activeXids.contains(record.expiredXid) 
-                || record.expiredXid.equals(this.xid))) {
+        if (record.expiredXid.get() != null  
+            && (InMemoryDatabase.activeXids.contains(record.expiredXid.get()) 
+                || record.expiredXid.get().equals(this.xid))) {
             
             return false;
         }
@@ -27,8 +27,8 @@ class Transaction {
     }
 
      boolean recordIsLocked(DBRecord record) {
-        return record.expiredXid != null  
-            && InMemoryDatabase.activeXids.contains(record.expiredXid); 
+        return record.expiredXid.get() != null  
+            && InMemoryDatabase.activeXids.contains(record.expiredXid.get()); 
      }  
 
      void addRecord(DBRecord record) {
@@ -37,21 +37,31 @@ class Transaction {
         InMemoryDatabase.records.add(record);   
      }   
 
-     void deleteRecord(Integer recordId) {
+     boolean deleteRecord(Integer recordId) {
         for (DBRecord record : records) {
-            if this.recordIsVisible(record) && record.id.equals(recordId) {
-                if (this.rowIsLocked(record)) {
-                    throw new LockException("Record is locked by another transaction.");
+            if record.id.equals(recordId) && this.recordIsVisible(record) {
+                if (this.recordIsLocked(record)) {
+                    throw new OptimisticLockingException("Record is modified by another transaction.");
                 } else {
-                    record.expiredXid.compareAndSet(0, this.xid);
-                    this.rollbackActions.add(() -> System.out.pringLn("TODO: rollback for delete"));
+                    if(!record.expiredXid.get().equals(0)) {
+                        continue;
+                    }
+                    if(record.expiredXid.compareAndSet(0, this.xid)) {
+                        this.rollbackActions.add(() -> System.out.pringLn("TODO: rollback for delete"));
+                        return true;
+                    } else {
+                        throw new OptimisticLockingException("Record is modified by another transaction.");
+                    }
                 }
             }        
-        }            
+        }  
+
+        return false;          
      }
 
      void updateRecord(Integer recordId, Integer amount) {
-        this.deleteRecord(recordId);
-        this.addRecord(new DBRecord(recordId, amount));         
+        if(this.deleteRecord(recordId)) {
+            this.addRecord(new DBRecord(recordId, amount));
+        }
      }      
 }
